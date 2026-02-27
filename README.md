@@ -1,15 +1,18 @@
 # Comparador de Títulos (App Web)
 
-Transformei seu script em um app web simples (sem dependências externas), com foco em uso prático no trabalho.
+App web local para comparar títulos de diferentes plataformas (ex.: sistema x PDF), ignorando acentos, pontuação e espaços extras.
 
 ## Funcionalidades
 
-- Normaliza e compara títulos ignorando acentos, pontuação e espaços extras.
+- Normalização robusta de texto para comparação.
 - Três níveis de detalhamento:
   - **Simples**
   - **Primeira diferença**
   - **Completo** (diferenças por palavra)
-- Interface web local para colar os dois títulos e comparar com um clique.
+- Proteções de robustez no app:
+  - fallback para detalhamento inválido
+  - rota inexistente retorna `404`
+  - método HTTP inválido retorna `405`
 
 ## Como executar
 

@@ -4,14 +4,21 @@ from wsgiref.simple_server import make_server
 
 from comparator import comparar_titulos
 
+DETALHAMENTOS_VALIDOS = {"simples", "primeira_diferenca", "completo"}
 
-def render_page(titulo_sistema: str = "", titulo_pdf: str = "", detalhamento: str = "completo", resultado: dict | None = None) -> bytes:
-    options = {
-        "simples": "",
-        "primeira_diferenca": "",
-        "completo": "",
-    }
-    options[detalhamento] = "selected"
+
+def normalizar_detalhamento(valor: str) -> str:
+    return valor if valor in DETALHAMENTOS_VALIDOS else "completo"
+
+
+def render_page(
+    titulo_sistema: str = "",
+    titulo_pdf: str = "",
+    detalhamento: str = "completo",
+    resultado: dict | None = None,
+) -> bytes:
+    detalhamento = normalizar_detalhamento(detalhamento)
+    options = {opcao: "selected" if opcao == detalhamento else "" for opcao in DETALHAMENTOS_VALIDOS}
 
     resultado_html = ""
     if resultado is not None:
@@ -35,8 +42,14 @@ def render_page(titulo_sistema: str = "", titulo_pdf: str = "", detalhamento: st
         if resultado.get("diferencas"):
             items = []
             for d in resultado["diferencas"]:
+                pos_sistema = f" (posições {d.pos_sistema[0]}-{d.pos_sistema[1]})" if d.pos_sistema else ""
+                pos_pdf = f" (posições {d.pos_pdf[0]}-{d.pos_pdf[1]})" if d.pos_pdf else ""
+                sistema_txt = ", ".join(d.sistema) if d.sistema else "[vazio]"
+                pdf_txt = ", ".join(d.pdf) if d.pdf else "[vazio]"
                 items.append(
-                    f"<li><strong>{escape(d.tipo)}</strong><br/>Sistema: {escape(str(d.sistema))}<br/>PDF: {escape(str(d.pdf))}</li>"
+                    f"<li><strong>{escape(d.tipo)}</strong><br/>"
+                    f"Sistema{escape(pos_sistema)}: {escape(sistema_txt)}<br/>"
+                    f"PDF{escape(pos_pdf)}: {escape(pdf_txt)}</li>"
                 )
             diffs = f"<h3>Divergências por palavra</h3><ul>{''.join(items)}</ul>"
 
@@ -92,23 +105,42 @@ def render_page(titulo_sistema: str = "", titulo_pdf: str = "", detalhamento: st
     return html.encode("utf-8")
 
 
-def application(environ, start_response):
-    if environ["REQUEST_METHOD"] == "POST":
+def _ler_body(environ: dict) -> str:
+    try:
         size = int(environ.get("CONTENT_LENGTH") or 0)
-        body = environ["wsgi.input"].read(size).decode("utf-8")
+    except ValueError:
+        size = 0
+    return environ["wsgi.input"].read(size).decode("utf-8", errors="replace")
+
+
+def application(environ, start_response):
+    method = environ.get("REQUEST_METHOD", "GET")
+    path = environ.get("PATH_INFO", "/")
+
+    if path != "/":
+        start_response("404 Not Found", [("Content-Type", "text/plain; charset=utf-8")])
+        return [b"Not Found"]
+
+    if method == "POST":
+        body = _ler_body(environ)
         form = parse_qs(body)
 
         titulo_sistema = form.get("titulo_sistema", [""])[0]
         titulo_pdf = form.get("titulo_pdf", [""])[0]
-        detalhamento = form.get("detalhamento", ["completo"])[0]
+        detalhamento = normalizar_detalhamento(form.get("detalhamento", ["completo"])[0])
 
         resultado = comparar_titulos(titulo_sistema, titulo_pdf, detalhamento)
         payload = render_page(titulo_sistema, titulo_pdf, detalhamento, resultado)
-    else:
-        payload = render_page()
+        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+        return [payload]
 
-    start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
-    return [payload]
+    if method == "GET":
+        payload = render_page()
+        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+        return [payload]
+
+    start_response("405 Method Not Allowed", [("Content-Type", "text/plain; charset=utf-8")])
+    return [b"Method Not Allowed"]
 
 
 if __name__ == "__main__":
